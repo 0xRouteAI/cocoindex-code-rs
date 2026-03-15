@@ -2,11 +2,72 @@
 
 Rust implementation of a local MCP code search server for Claude Code, Codex CLI, and other MCP clients.
 
-This version is API-only for embeddings:
+This version is pure API mode for embeddings:
 
 - it does not bundle a local embedding model
-- it expects an embedding API provider configured by the user
-- tool/runtime is free, but embedding API costs depend on the provider
+- it expects a hosted embedding API configured by the user
+- the tool/runtime can be free, but embedding API costs depend on the provider
+
+## Install
+
+Install the latest release binary with one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | bash
+```
+
+This installs the prebuilt release binary to:
+
+```bash
+~/.local/bin/cocoindex-code-rs
+```
+
+The installed global CLI command is:
+
+```bash
+cocoindex-code-rs
+```
+
+## Register MCP
+
+Claude Code:
+
+```bash
+claude mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+```
+
+Codex CLI:
+
+```bash
+codex mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+```
+
+After registration:
+
+- Claude Code or Codex CLI starts `cocoindex-code-rs mcp` when needed
+- the MCP process ensures the local daemon is running
+- first search auto-builds the project index if missing
+- later searches auto-refresh changed files incrementally
+- after the first successful index, the daemon watches file changes in the background
+
+## Agent Prompt
+
+Add this to your project's `AGENTS.md`:
+
+```md
+Use the `cocoindex-code-rs` MCP server for semantic code search when:
+- searching by behavior or meaning instead of exact text
+- exploring unfamiliar parts of the codebase
+- looking for similar implementations
+- grep or filename search is noisy or inconclusive
+
+Prefer normal text search first when exact names, symbols, routes, config keys, or error strings are known.
+
+When using semantic search:
+- use it to find candidate files and code chunks
+- then verify results with local code reading or text search
+- avoid repeated semantic searches when one search already identified the area
+```
 
 ## What It Does
 
@@ -20,39 +81,6 @@ This version is API-only for embeddings:
 - Performs incremental indexing on later searches
 - Starts a local daemon automatically
 - Watches project files in the background after the first successful index
-
-## Binary Name
-
-The installed CLI command is:
-
-```bash
-cocoindex-code-rs
-```
-
-After installation, it should be available globally from `PATH`.
-
-## Build
-
-```bash
-cd cocoindex-rs
-cargo build --release
-```
-
-Binary output:
-
-```bash
-./target/release/cocoindex-code-rs
-```
-
-## Basic CLI
-
-```bash
-cocoindex-code-rs init
-cocoindex-code-rs index /path/to/project
-cocoindex-code-rs search "authentication logic" --project-root /path/to/project
-cocoindex-code-rs status --project-root /path/to/project
-cocoindex-code-rs mcp --project-root /path/to/project
-```
 
 ## Settings
 
@@ -81,42 +109,24 @@ EMBEDDING_DIM
 COCOINDEX_CODE_DIR
 ```
 
-This project is pure API mode for embeddings. Configure one of:
+This project does not run local embedding inference by itself.
 
-- OpenAI-compatible embedding API
-- other compatible hosted embedding API endpoints
-
-It does not run local embedding inference by itself.
-
-## MCP Registration
-
-If `cocoindex-code-rs` is installed globally, register it like this:
-
-### Claude Code
+## Build From Source
 
 ```bash
-claude mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+cargo build --release
+./target/release/cocoindex-code-rs
 ```
 
-### Codex CLI
+## Basic CLI
 
 ```bash
-codex mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+cocoindex-code-rs init
+cocoindex-code-rs index /path/to/project
+cocoindex-code-rs search "authentication logic" --project-root /path/to/project
+cocoindex-code-rs status --project-root /path/to/project
+cocoindex-code-rs mcp --project-root /path/to/project
 ```
-
-After registration:
-
-- opening Claude Code or Codex CLI makes the MCP available
-- first search auto-builds the project index if missing
-- later searches auto-refresh changed files incrementally
-
-## Behavior
-
-Search behavior is designed for automatic use by coding agents:
-
-- no index yet: build it automatically
-- existing index: refresh changed files incrementally
-- after first successful indexing: daemon starts background file watching for that project
 
 ## Notes
 
