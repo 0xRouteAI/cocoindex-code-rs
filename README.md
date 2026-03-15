@@ -55,18 +55,18 @@ After registration:
 Add this to your project's `AGENTS.md`:
 
 ```md
-Use the `cocoindex-code-rs` MCP server for semantic code search when:
-- searching by behavior or meaning instead of exact text
-- exploring unfamiliar parts of the codebase
-- looking for similar implementations
-- grep or filename search is noisy or inconclusive
+Use the `cocoindex-code-rs` MCP server automatically for semantic code search when:
+- the user asks by behavior, intent, or meaning rather than exact text
+- the codebase area is unfamiliar
+- similar implementations or related patterns are needed
+- grep, filename search, or symbol lookup is noisy or inconclusive
 
 Prefer normal text search first when exact names, symbols, routes, config keys, or error strings are known.
 
-When using semantic search:
-- use it to find candidate files and code chunks
-- then verify results with local code reading or text search
-- avoid repeated semantic searches when one search already identified the area
+When using `cocoindex-code-rs`:
+- use it to identify candidate files and code chunks
+- then verify results by reading files or using local text search
+- avoid repeated semantic searches if one search already narrowed the area
 ```
 
 ## What It Does
