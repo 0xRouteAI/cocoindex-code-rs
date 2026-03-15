@@ -1,0 +1,82 @@
+name: cocoindex-code-rs-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            os: linux
+            arch: x86_64
+            binary: cocoindex-code-rs
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            os: linux
+            arch: aarch64
+            binary: cocoindex-code-rs
+          - runner: macos-latest
+            target: x86_64-apple-darwin
+            os: macos
+            arch: x86_64
+            binary: cocoindex-code-rs
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+            os: macos
+            arch: aarch64
+            binary: cocoindex-code-rs
+
+    runs-on: ${{ matrix.runner }}
+
+    defaults:
+      run:
+        working-directory: cocoindex-rs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install Linux cross toolchain
+        if: runner.os == 'Linux' && matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build binary
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package archive
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/${{ matrix.binary }}
+          chmod +x dist/${{ matrix.binary }}
+          tar -czf ../${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist ${{ matrix.binary }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ github.workspace }}/${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ github.workspace }}/${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz

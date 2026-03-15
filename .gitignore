@@ -1,0 +1,6 @@
+target/
+.cocoindex_code/
+.DS_Store
+*.log
+.env
+.env.*
