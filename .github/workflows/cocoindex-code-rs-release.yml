@@ -40,10 +40,6 @@ jobs:
 
     runs-on: ${{ matrix.runner }}
 
-    defaults:
-      run:
-        working-directory: cocoindex-rs
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,16 +63,16 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/${{ matrix.binary }}
           chmod +x dist/${{ matrix.binary }}
-          tar -czf ../${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist ${{ matrix.binary }}
+          tar -czf ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz -C dist ${{ matrix.binary }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ github.workspace }}/${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          path: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
 
       - name: Upload release asset
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ github.workspace }}/${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          files: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
