@@ -55,6 +55,14 @@ impl UserSettings {
         Ok(())
     }
 
+    pub fn exists() -> Result<bool> {
+        Ok(Self::settings_path()?.exists())
+    }
+
+    pub fn path() -> Result<PathBuf> {
+        Self::settings_path()
+    }
+
     fn settings_path() -> Result<PathBuf> {
         Ok(Self::settings_dir()?.join("settings.yml"))
     }

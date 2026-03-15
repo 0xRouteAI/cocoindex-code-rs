@@ -3,6 +3,7 @@ use coco_rs::{Provider, config::{Config, UserSettings, ProjectSettings}};
 use coco_rs::daemon_client::{ensure_daemon, stop_daemon};
 use coco_rs::daemon_protocol::{Request, Response};
 use coco_rs::project::{default_path_filter, project_db_path, resolve_project_root};
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -67,6 +68,86 @@ enum Commands {
     },
 }
 
+fn prompt_with_default(label: &str, default: &str, secret: bool) -> anyhow::Result<String> {
+    let mut stdout = io::stdout();
+    if default.is_empty() {
+        write!(stdout, "{}: ", label)?;
+    } else {
+        write!(stdout, "{} [{}]: ", label, default)?;
+    }
+    stdout.flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let value = input.trim().to_string();
+
+    if !value.is_empty() {
+        return Ok(value);
+    }
+
+    if !default.is_empty() {
+        return Ok(default.to_string());
+    }
+
+    if secret {
+        anyhow::bail!("{} cannot be empty", label);
+    }
+
+    Ok(String::new())
+}
+
+fn prompt_embedding_dim(default: usize) -> anyhow::Result<usize> {
+    let mut stdout = io::stdout();
+    loop {
+        write!(stdout, "Embedding dimension [{}]: ", default)?;
+        stdout.flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let value = input.trim();
+
+        if value.is_empty() {
+            return Ok(default);
+        }
+
+        if let Ok(parsed) = value.parse::<usize>() {
+            return Ok(parsed);
+        }
+
+        writeln!(stdout, "Please enter a valid positive integer.")?;
+    }
+}
+
+fn maybe_bootstrap_user_settings() -> anyhow::Result<UserSettings> {
+    if let Ok(settings) = UserSettings::load() {
+        return Ok(settings);
+    }
+
+    let defaults = UserSettings::default();
+
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        return Ok(defaults);
+    }
+
+    println!("No user settings found. Let's configure cocoindex-code-rs.");
+
+    let settings = UserSettings {
+        api_base: prompt_with_default("Embedding API base URL", &defaults.api_base, false)?,
+        api_key: prompt_with_default("Embedding API key", &defaults.api_key, true)?,
+        model: prompt_with_default("Embedding model", &defaults.model, false)?,
+        embedding_dim: prompt_embedding_dim(defaults.embedding_dim)?,
+        envs: defaults.envs,
+    };
+
+    settings.save()?;
+    println!(
+        "Saved user settings to {}",
+        UserSettings::path()?.display()
+    );
+
+    Ok(settings)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -78,8 +159,16 @@ async fn main() -> anyhow::Result<()> {
         tracing_subscriber::fmt::init();
     }
 
-    // Load user settings
-    let user_settings = UserSettings::load_or_default();
+    let needs_interactive_settings = !matches!(
+        cli.command,
+        Some(Commands::Mcp { .. }) | Some(Commands::RunDaemon)
+    );
+
+    let user_settings = if needs_interactive_settings {
+        maybe_bootstrap_user_settings()?
+    } else {
+        UserSettings::load_or_default()
+    };
 
     // Build config from user settings and CLI args
     let config = Config {
@@ -97,11 +186,15 @@ async fn main() -> anyhow::Result<()> {
             println!("Initialized project settings at {}/.cocoindex_code/settings.yml", path.display());
 
             // Also create user settings if they don't exist
-            if UserSettings::load().is_err() {
-                let user_settings = UserSettings::default();
-                user_settings.save()?;
-                println!("Created user settings at ~/.cocoindex_code/settings.yml");
-                println!("Please update with your API key.");
+            if !UserSettings::exists()? {
+                let user_settings = maybe_bootstrap_user_settings()?;
+                println!(
+                    "Created user settings at {}",
+                    UserSettings::path()?.display()
+                );
+                if user_settings.api_key.is_empty() {
+                    println!("Please update the API key before indexing.");
+                }
             }
         }
         Some(Commands::Status { project_root }) => {
