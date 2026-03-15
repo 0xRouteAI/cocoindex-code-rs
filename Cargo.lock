@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "cocoindex_ops_text"
-version = "999.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "globset",
