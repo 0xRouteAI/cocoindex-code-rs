@@ -36,10 +36,6 @@ INSTALL_DIR=/your/bin/path
 curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | bash
 ```
 
-Prebuilt binaries currently support Linux and macOS only.
-Windows native binaries are not supported yet.
-On Windows, use WSL and run the Linux install command inside WSL.
-
 Install to a custom directory:
 
 ```bash
@@ -49,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/in
 Install a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | VERSION=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | VERSION=v0.1.15 bash
 ```
 
 ### Verify installation
@@ -58,8 +54,6 @@ curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/in
 cocoindex-code-rs --help
 which cocoindex-code-rs
 ```
-
-If you are using Windows with WSL, run these commands inside your WSL shell rather than PowerShell or `cmd.exe`.
 
 If `~/.local/bin` is not in your `PATH`, add this to your shell profile:
 
@@ -205,7 +199,7 @@ curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/in
 安装指定版本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | VERSION=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | VERSION=v0.1.15 bash
 ```
 
 ### 安装后验证

@@ -23,7 +23,7 @@ cargo build --release
 Register:
 
 ```bash
-claude mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+claude mcp add cocoindex-code-rs -- cocoindex-code-rs
 ```
 
 ## Codex CLI
@@ -31,7 +31,7 @@ claude mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
 Register:
 
 ```bash
-codex mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+codex mcp add cocoindex-code-rs -- cocoindex-code-rs
 ```
 
 ## Optional Environment
@@ -44,7 +44,7 @@ claude mcp add cocoindex-code-rs \
   -e OPENAI_API_BASE=https://api.openai.com/v1 \
   -e EMBEDDING_MODEL=text-embedding-3-small \
   -e EMBEDDING_DIM=1536 \
-  -- cocoindex-code-rs mcp
+  -- cocoindex-code-rs
 ```
 
 Equivalent settings can also be stored in:
@@ -66,11 +66,11 @@ embedding_dim: 1536
 
 When the MCP server is used:
 
-1. the MCP process starts
-2. it ensures the local daemon is running
-3. if the project has no index, first search builds it automatically
-4. later searches refresh only changed files
-5. after the first successful index, the daemon watches project files in the background
+1. the MCP process starts as a single local stdio server
+2. if the project has no index, first use builds it automatically
+3. later updates refresh only changed files
+4. each project keeps its own `.cocoindex_code/target_sqlite.db`
+5. during the active MCP session, accessed projects are watched in the background
 
 ## Available MCP Tools
 
@@ -84,7 +84,7 @@ Arguments:
 - `project_root` optional
 - `limit` optional
 - `offset` optional
-- `refresh_index` optional, default `true`
+- `refresh_index` optional, default `false`
 - `languages` optional
 - `paths` optional
 
@@ -121,11 +121,11 @@ If the command is not found:
 which cocoindex-code-rs
 ```
 
-If the daemon fails to start:
+If indexing does not update:
 
-- check `~/.cocoindex_code/daemon.log`
 - verify the binary is executable
-- verify your environment allows local socket creation
+- check that the project contains a writable `.cocoindex_code/` directory
+- use `index_project` or `cocoindex-code-rs index /path/to/project` to force a rebuild
 
 If search is slow:
 

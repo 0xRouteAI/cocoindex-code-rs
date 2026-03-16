@@ -2,8 +2,6 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use std::fs;
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
-use std::thread;
 use coco_rs::{Store, Provider, config::Config};
 use std::sync::Arc;
 
@@ -45,18 +43,6 @@ fn write_project_marker(project_root: &Path) {
     let config_dir = project_root.join(".cocoindex_code");
     fs::create_dir_all(&config_dir).unwrap();
     fs::write(config_dir.join("settings.yml"), "include_patterns: []\n").unwrap();
-}
-
-fn daemon_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-fn lock_daemon_test() -> std::sync::MutexGuard<'static, ()> {
-    match daemon_test_lock().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
 }
 
 #[tokio::test]
@@ -236,24 +222,6 @@ fn test_provider_reduces_chunk_size_for_short_context_models() {
 }
 
 #[test]
-fn test_query_embedding_cache_reuses_existing_embedding() {
-    let mut cache = coco_rs::daemon::QueryEmbeddingCache::new(2);
-    let first = vec![0.1, 0.2];
-    let second = vec![0.3, 0.4];
-
-    cache.insert("first".to_string(), first.clone());
-    cache.insert("second".to_string(), second.clone());
-
-    assert_eq!(cache.get("first"), Some(first.clone()));
-
-    cache.insert("third".to_string(), vec![0.5, 0.6]);
-
-    assert_eq!(cache.get("first"), Some(first));
-    assert_eq!(cache.get("second"), None);
-    assert_eq!(cache.get("third"), Some(vec![0.5, 0.6]));
-}
-
-#[test]
 fn test_find_project_root_from_nested_directory() {
     let temp_dir = TempDir::new().unwrap();
     let project_root = temp_dir.path().join("project");
@@ -331,14 +299,20 @@ async fn test_project_scoped_stores_do_not_mix_results() {
         api_base: "https://api.openai.com/v1".to_string(),
         model: "text-embedding-3-small".to_string(),
         embedding_dim: 3,
-        db_path: coco_rs::project::project_db_path(&left_root).to_string_lossy().to_string(),
+        db_path: left_root
+            .join(".cache/left/target_sqlite.db")
+            .to_string_lossy()
+            .to_string(),
     };
     let right_config = Config {
         api_key: "test-key".to_string(),
         api_base: "https://api.openai.com/v1".to_string(),
         model: "text-embedding-3-small".to_string(),
         embedding_dim: 3,
-        db_path: coco_rs::project::project_db_path(&right_root).to_string_lossy().to_string(),
+        db_path: right_root
+            .join(".cache/right/target_sqlite.db")
+            .to_string_lossy()
+            .to_string(),
     };
 
     let left_store = Store::new(&left_config).await.unwrap();
@@ -348,7 +322,6 @@ async fn test_project_scoped_stores_do_not_mix_results() {
         &coco_rs::project::scoped_chunk_id(&left_root, "src/main.rs", 0),
         "src/main.rs",
         Some("rust"),
-        "fn alpha() {}",
         1,
         1,
         "hash-a",
@@ -359,7 +332,6 @@ async fn test_project_scoped_stores_do_not_mix_results() {
         &coco_rs::project::scoped_chunk_id(&right_root, "src/main.rs", 0),
         "src/main.rs",
         Some("rust"),
-        "fn beta() {}",
         1,
         1,
         "hash-b",
@@ -371,8 +343,8 @@ async fn test_project_scoped_stores_do_not_mix_results() {
 
     assert_eq!(left_results.len(), 1);
     assert_eq!(right_results.len(), 1);
-    assert!(left_results[0].content.contains("alpha"));
-    assert!(right_results[0].content.contains("beta"));
+    assert_eq!(left_results[0].file_path, "src/main.rs");
+    assert_eq!(right_results[0].file_path, "src/main.rs");
 }
 
 #[test]
@@ -384,209 +356,7 @@ fn test_cli_help_succeeds() {
 }
 
 #[test]
-fn test_daemon_index_and_search_with_mock_embeddings() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
-    let project_dir = TempDir::new().unwrap();
-    let project_root = project_dir.path().join("project");
-    fs::create_dir_all(project_root.join("src")).unwrap();
-    fs::write(
-        project_root.join("src/main.rs"),
-        "fn calculate_fibonacci(n: u32) -> u32 { if n <= 1 { n } else { calculate_fibonacci(n - 1) + calculate_fibonacci(n - 2) } }\n",
-    )
-    .unwrap();
-
-    std::env::set_var("COCOINDEX_CODE_DIR", daemon_dir.path());
-    std::env::set_var("OPENAI_API_BASE", "mock://embedding");
-    std::env::set_var("OPENAI_API_KEY", "test-key");
-    std::env::set_var("EMBEDDING_MODEL", "mock-model");
-    std::env::set_var("EMBEDDING_DIM", "16");
-    std::env::set_var(
-        "CARGO_BIN_EXE_cocoindex-code-rs",
-        env!("CARGO_BIN_EXE_cocoindex-code-rs"),
-    );
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-
-    let client = coco_rs::daemon_client::ensure_daemon().unwrap();
-    let handshake = client.handshake().unwrap();
-    match handshake {
-        coco_rs::daemon_protocol::Response::Handshake { ok, .. } => assert!(ok),
-        other => panic!("unexpected handshake response: {:?}", other),
-    }
-
-    let index_response = client.request(&coco_rs::daemon_protocol::Request::Index {
-        project_root: project_root.display().to_string(),
-        refresh: false,
-    }).unwrap();
-    match index_response {
-        coco_rs::daemon_protocol::Response::Index { success, .. } => assert!(success),
-        other => panic!("unexpected index response: {:?}", other),
-    }
-
-    let search_response = client.request(&coco_rs::daemon_protocol::Request::Search {
-        project_root: project_root.display().to_string(),
-        query: "fibonacci".to_string(),
-        languages: None,
-        paths: None,
-        limit: 5,
-        offset: 0,
-        refresh: false,
-    }).unwrap();
-    match search_response {
-        coco_rs::daemon_protocol::Response::Search { success, results, .. } => {
-            assert!(success);
-            assert!(!results.is_empty());
-            assert!(results[0].content.contains("fibonacci"));
-        }
-        other => panic!("unexpected search response: {:?}", other),
-    }
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-    std::env::remove_var("COCOINDEX_CODE_DIR");
-    std::env::remove_var("OPENAI_API_BASE");
-    std::env::remove_var("OPENAI_API_KEY");
-    std::env::remove_var("EMBEDDING_MODEL");
-    std::env::remove_var("EMBEDDING_DIM");
-}
-
-#[test]
-fn test_daemon_search_auto_indexes_project() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
-    let project_dir = TempDir::new().unwrap();
-    let project_root = project_dir.path().join("project");
-    fs::create_dir_all(project_root.join("src")).unwrap();
-    fs::write(
-        project_root.join("src/main.rs"),
-        "fn auto_index_probe() -> bool { true }\n",
-    )
-    .unwrap();
-
-    std::env::set_var("COCOINDEX_CODE_DIR", daemon_dir.path());
-    std::env::set_var("OPENAI_API_BASE", "mock://embedding");
-    std::env::set_var("OPENAI_API_KEY", "test-key");
-    std::env::set_var("EMBEDDING_MODEL", "mock-model");
-    std::env::set_var("EMBEDDING_DIM", "16");
-    std::env::set_var(
-        "CARGO_BIN_EXE_cocoindex-code-rs",
-        env!("CARGO_BIN_EXE_cocoindex-code-rs"),
-    );
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-
-    let client = coco_rs::daemon_client::ensure_daemon().unwrap();
-    let search_response = client.request(&coco_rs::daemon_protocol::Request::Search {
-        project_root: project_root.display().to_string(),
-        query: "auto index".to_string(),
-        languages: None,
-        paths: None,
-        limit: 5,
-        offset: 0,
-        refresh: false,
-    }).unwrap();
-
-    match search_response {
-        coco_rs::daemon_protocol::Response::Search { success, results, .. } => {
-            assert!(success);
-            assert!(!results.is_empty());
-            assert!(project_root.join(".cocoindex_code/target_sqlite.db").exists());
-        }
-        other => panic!("unexpected search response: {:?}", other),
-    }
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-    std::env::remove_var("COCOINDEX_CODE_DIR");
-    std::env::remove_var("OPENAI_API_BASE");
-    std::env::remove_var("OPENAI_API_KEY");
-    std::env::remove_var("EMBEDDING_MODEL");
-    std::env::remove_var("EMBEDDING_DIM");
-}
-
-#[test]
-fn test_daemon_handles_multiple_clients_for_same_project() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
-    let project_dir = TempDir::new().unwrap();
-    let project_root = project_dir.path().join("project");
-    fs::create_dir_all(project_root.join("src")).unwrap();
-    fs::write(
-        project_root.join("src/main.rs"),
-        "fn concurrent_probe() -> bool { true }\n",
-    )
-    .unwrap();
-
-    std::env::set_var("COCOINDEX_CODE_DIR", daemon_dir.path());
-    std::env::set_var("OPENAI_API_BASE", "mock://embedding");
-    std::env::set_var("OPENAI_API_KEY", "test-key");
-    std::env::set_var("EMBEDDING_MODEL", "mock-model");
-    std::env::set_var("EMBEDDING_DIM", "16");
-    std::env::set_var(
-        "CARGO_BIN_EXE_cocoindex-code-rs",
-        env!("CARGO_BIN_EXE_cocoindex-code-rs"),
-    );
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-    let _client = coco_rs::daemon_client::ensure_daemon().unwrap();
-
-    let project_root_str = project_root.display().to_string();
-
-    let index_thread = {
-        let project_root = project_root_str.clone();
-        thread::spawn(move || {
-            let client = coco_rs::daemon_client::DaemonClient::connect().unwrap();
-            client.request(&coco_rs::daemon_protocol::Request::Index {
-                project_root,
-                refresh: false,
-            }).unwrap()
-        })
-    };
-
-    let search_thread = {
-        let project_root = project_root_str.clone();
-        thread::spawn(move || {
-            let client = coco_rs::daemon_client::DaemonClient::connect().unwrap();
-            client.request(&coco_rs::daemon_protocol::Request::Search {
-                project_root,
-                query: "concurrent_probe".to_string(),
-                languages: None,
-                paths: None,
-                limit: 5,
-                offset: 0,
-                refresh: false,
-            }).unwrap()
-        })
-    };
-
-    match index_thread.join().unwrap() {
-        coco_rs::daemon_protocol::Response::Index { success, .. } => assert!(success),
-        other => panic!("unexpected index response: {:?}", other),
-    }
-
-    match search_thread.join().unwrap() {
-        coco_rs::daemon_protocol::Response::Search { success, results, .. } => {
-            assert!(success);
-            assert!(!results.is_empty());
-        }
-        other => panic!("unexpected search response: {:?}", other),
-    }
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-    std::env::remove_var("COCOINDEX_CODE_DIR");
-    std::env::remove_var("OPENAI_API_BASE");
-    std::env::remove_var("OPENAI_API_KEY");
-    std::env::remove_var("EMBEDDING_MODEL");
-    std::env::remove_var("EMBEDDING_DIM");
-}
-
-#[test]
 fn test_cli_index_and_search_with_mock_embeddings() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
     let project_dir = TempDir::new().unwrap();
     let project_root = project_dir.path().join("project");
     fs::create_dir_all(project_root.join("src")).unwrap();
@@ -597,21 +367,16 @@ fn test_cli_index_and_search_with_mock_embeddings() {
     .unwrap();
 
     let binary = env!("CARGO_BIN_EXE_cocoindex-code-rs");
-    let base = Command::new(binary);
-
+    let runtime_dir = project_dir.path().join("runtime");
     let common_envs = [
-        ("COCOINDEX_CODE_DIR", daemon_dir.path().to_string_lossy().to_string()),
         ("OPENAI_API_BASE", "mock://embedding".to_string()),
         ("OPENAI_API_KEY", "test-key".to_string()),
         ("EMBEDDING_MODEL", "mock-model".to_string()),
         ("EMBEDDING_DIM", "16".to_string()),
-        ("CARGO_BIN_EXE_cocoindex-code-rs", binary.to_string()),
+        ("COCOINDEX_CODE_DIR", runtime_dir.to_string_lossy().to_string()),
     ];
 
-    let _ = coco_rs::daemon_client::stop_daemon();
-
-    let mut index_cmd = base;
-    let index_output = index_cmd
+    let index_output = Command::new(binary)
         .envs(common_envs.clone())
         .arg("index")
         .arg(&project_root)
@@ -630,80 +395,23 @@ fn test_cli_index_and_search_with_mock_embeddings() {
     assert!(search_output.status.success(), "stderr: {}", String::from_utf8_lossy(&search_output.stderr));
     let stdout = String::from_utf8_lossy(&search_output.stdout);
     assert!(stdout.contains("src/main.rs"));
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-}
-
-#[test]
-fn test_cli_daemon_status_and_stop() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
-    let project_dir = TempDir::new().unwrap();
-    let project_root = project_dir.path().join("project");
-    fs::create_dir_all(project_root.join("src")).unwrap();
-    fs::write(project_root.join("src/main.rs"), "fn daemon_status_probe() {}\n").unwrap();
-
-    let binary = env!("CARGO_BIN_EXE_cocoindex-code-rs");
-    let common_envs = [
-        ("COCOINDEX_CODE_DIR", daemon_dir.path().to_string_lossy().to_string()),
-        ("OPENAI_API_BASE", "mock://embedding".to_string()),
-        ("OPENAI_API_KEY", "test-key".to_string()),
-        ("EMBEDDING_MODEL", "mock-model".to_string()),
-        ("EMBEDDING_DIM", "16".to_string()),
-        ("CARGO_BIN_EXE_cocoindex-code-rs", binary.to_string()),
-    ];
-
-    let _ = coco_rs::daemon_client::stop_daemon();
-
-    let index_output = Command::new(binary)
-        .envs(common_envs.clone())
-        .arg("index")
-        .arg(&project_root)
-        .output()
-        .unwrap();
-    assert!(index_output.status.success(), "stderr: {}", String::from_utf8_lossy(&index_output.stderr));
-
-    let status_output = Command::new(binary)
-        .envs(common_envs.clone())
-        .arg("daemon-status")
-        .output()
-        .unwrap();
-    assert!(status_output.status.success(), "stderr: {}", String::from_utf8_lossy(&status_output.stderr));
-    let status_stdout = String::from_utf8_lossy(&status_output.stdout);
-    assert!(status_stdout.contains(&project_root.to_string_lossy().to_string()));
-
-    let stop_output = Command::new(binary)
-        .envs(common_envs.clone())
-        .arg("stop-daemon")
-        .output()
-        .unwrap();
-    assert!(stop_output.status.success(), "stderr: {}", String::from_utf8_lossy(&stop_output.stderr));
-
-    let socket_path = daemon_dir.path().join("daemon.sock");
-    assert!(!socket_path.exists(), "daemon socket still exists at {}", socket_path.display());
 }
 
 #[test]
 fn test_status_does_not_create_database() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
     let project_dir = TempDir::new().unwrap();
     let project_root = project_dir.path().join("project");
     fs::create_dir_all(&project_root).unwrap();
 
     let binary = env!("CARGO_BIN_EXE_cocoindex-code-rs");
+    let runtime_dir = project_dir.path().join("runtime");
     let common_envs = [
-        ("COCOINDEX_CODE_DIR", daemon_dir.path().to_string_lossy().to_string()),
         ("OPENAI_API_BASE", "mock://embedding".to_string()),
         ("OPENAI_API_KEY", "test-key".to_string()),
         ("EMBEDDING_MODEL", "mock-model".to_string()),
         ("EMBEDDING_DIM", "16".to_string()),
-        ("CARGO_BIN_EXE_cocoindex-code-rs", binary.to_string()),
+        ("COCOINDEX_CODE_DIR", runtime_dir.to_string_lossy().to_string()),
     ];
-
-    let _ = coco_rs::daemon_client::stop_daemon();
 
     let status_output = Command::new(binary)
         .envs(common_envs.clone())
@@ -715,15 +423,11 @@ fn test_status_does_not_create_database() {
     assert!(status_output.status.success(), "stderr: {}", String::from_utf8_lossy(&status_output.stderr));
 
     assert!(!project_root.join(".cocoindex_code/target_sqlite.db").exists());
-
-    let _ = coco_rs::daemon_client::stop_daemon();
+    assert!(!status_output.stdout.is_empty());
 }
 
 #[test]
 fn test_cli_search_defaults_to_current_subdirectory() {
-    let _guard = lock_daemon_test();
-
-    let daemon_dir = TempDir::new().unwrap();
     let project_dir = TempDir::new().unwrap();
     let project_root = project_dir.path().join("project");
     fs::create_dir_all(project_root.join("src/feature")).unwrap();
@@ -740,16 +444,14 @@ fn test_cli_search_defaults_to_current_subdirectory() {
     .unwrap();
 
     let binary = env!("CARGO_BIN_EXE_cocoindex-code-rs");
+    let runtime_dir = project_dir.path().join("runtime");
     let common_envs = [
-        ("COCOINDEX_CODE_DIR", daemon_dir.path().to_string_lossy().to_string()),
         ("OPENAI_API_BASE", "mock://embedding".to_string()),
         ("OPENAI_API_KEY", "test-key".to_string()),
         ("EMBEDDING_MODEL", "mock-model".to_string()),
         ("EMBEDDING_DIM", "16".to_string()),
-        ("CARGO_BIN_EXE_cocoindex-code-rs", binary.to_string()),
+        ("COCOINDEX_CODE_DIR", runtime_dir.to_string_lossy().to_string()),
     ];
-
-    let _ = coco_rs::daemon_client::stop_daemon();
 
     let search_output = Command::new(binary)
         .envs(common_envs)
@@ -764,8 +466,6 @@ fn test_cli_search_defaults_to_current_subdirectory() {
     let stdout = String::from_utf8_lossy(&search_output.stdout);
     assert!(stdout.contains("src/feature/main.rs"));
     assert!(!stdout.contains("src/other/main.rs"));
-
-    let _ = coco_rs::daemon_client::stop_daemon();
 }
 
 #[cfg(test)]

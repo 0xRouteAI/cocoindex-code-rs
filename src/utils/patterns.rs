@@ -29,14 +29,28 @@ impl PatternMatcher {
     }
 
     pub fn matches(&self, path: &Path) -> bool {
-        let path_str = path.to_string_lossy();
-
-        // Check exclude rules first
-        if self.exclude.is_match(&*path_str) {
+        if self.matches_exclude(path) {
             return false;
         }
 
         // Then check include rules
+        let path_str = path.to_string_lossy();
         self.include.is_match(&*path_str)
+    }
+
+    fn matches_exclude(&self, path: &Path) -> bool {
+        let path_str = path.to_string_lossy();
+        if self.exclude.is_match(&*path_str) {
+            return true;
+        }
+
+        for ancestor in path.ancestors().skip(1) {
+            let ancestor_str = ancestor.to_string_lossy();
+            if self.exclude.is_match(&*ancestor_str) {
+                return true;
+            }
+        }
+
+        false
     }
 }

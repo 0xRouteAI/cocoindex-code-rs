@@ -189,7 +189,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cocoindex-code-rs"
-version = "0.1.0"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "clap",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "cocoindex_ops_text"
-version = "0.1.0"
+version = "999.0.0"
 dependencies = [
  "anyhow",
  "globset",

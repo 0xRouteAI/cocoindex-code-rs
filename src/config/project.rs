@@ -52,8 +52,31 @@ impl Default for ProjectSettings {
             .map(String::from)
             .collect(),
             exclude_patterns: vec![
-                "**/.*", "**/__pycache__", "**/node_modules",
-                "**/target", "**/dist", "**/build", "**/.cocoindex_code",
+                "**/.*", "**/.*/**",
+                "**/__pycache__", "**/__pycache__/**",
+                "**/node_modules", "**/node_modules/**",
+                "**/.git", "**/.git/**",
+                "**/.svn", "**/.svn/**",
+                "**/.hg", "**/.hg/**",
+                "**/.idea", "**/.idea/**",
+                "**/.vscode", "**/.vscode/**",
+                "**/target", "**/target/**",
+                "**/dist", "**/dist/**",
+                "**/build", "**/build/**",
+                "**/coverage", "**/coverage/**",
+                "**/.next", "**/.next/**",
+                "**/.nuxt", "**/.nuxt/**",
+                "**/out", "**/out/**",
+                "**/tmp", "**/tmp/**",
+                "**/temp", "**/temp/**",
+                "**/vendor", "**/vendor/**",
+                "**/.cocoindex_code", "**/.cocoindex_code/**",
+                "**/*.min.js", "**/*.min.css", "**/*.map", "**/*.lock", "**/*.log",
+                "**/*.sqlite", "**/*.db", "**/*.bin", "**/*.exe", "**/*.dll",
+                "**/*.so", "**/*.dylib", "**/*.class", "**/*.jar", "**/*.war",
+                "**/*.pyc", "**/*.pyo", "**/*.o", "**/*.a",
+                "**/*.jpg", "**/*.jpeg", "**/*.png", "**/*.gif", "**/*.webp",
+                "**/*.pdf", "**/*.zip", "**/*.tar", "**/*.gz",
             ]
             .into_iter()
             .map(String::from)
