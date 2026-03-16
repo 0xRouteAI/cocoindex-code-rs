@@ -103,12 +103,10 @@ impl Indexer {
 
             for (i, (chunk, embedding)) in chunks.into_iter().zip(embeddings.into_iter()).enumerate() {
                 let id = scoped_chunk_id(root, &rel_path_str, i);
-                let chunk_content = &content[chunk.range.start..chunk.range.end];
                 self.store.save_chunk(
                     &id,
                     &rel_path_str,
                     language.as_deref(),
-                    chunk_content,
                     chunk.start.line as usize,
                     chunk.end.line as usize,
                     &hash,

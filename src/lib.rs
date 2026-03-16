@@ -5,10 +5,7 @@ pub mod mcp;
 pub mod config;
 pub mod utils;
 pub mod project;
-pub mod daemon;
-pub mod daemon_client;
-pub mod daemon_protocol;
-pub mod version;
+pub mod service;
 
 pub use store::Store;
 pub use indexer::Indexer;

@@ -30,20 +30,18 @@ impl Store {
                 id TEXT PRIMARY KEY,
                 file_path TEXT,
                 language TEXT,
-                content TEXT,
                 start_line INTEGER,
                 end_line INTEGER,
                 hash TEXT,
                 embedding FLOAT[{}],
                 +partition_key=language,
-                +auxiliary_columns=[file_path, content, start_line, end_line]
+                +auxiliary_columns=[file_path, start_line, end_line]
             )",
             config.embedding_dim
         );
         conn.execute(&create_table_sql,
             [],
         )?;
-
         Ok(Self {
             conn: Arc::new(Mutex::new(conn))
         })
@@ -63,7 +61,6 @@ impl Store {
         id: &str,
         file_path: &str,
         language: Option<&str>,
-        content: &str,
         start_line: usize,
         end_line: usize,
         hash: &str,
@@ -81,13 +78,12 @@ impl Store {
         // Insert into vec0 virtual table
         conn.execute(
             "INSERT OR REPLACE INTO code_chunks_vec
-             (id, file_path, language, content, start_line, end_line, hash, embedding)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (id, file_path, language, start_line, end_line, hash, embedding)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 id,
                 file_path,
                 language,
-                content,
                 start_line as i64,
                 end_line as i64,
                 hash,
@@ -170,6 +166,7 @@ impl Store {
         self.search_global(&conn, embedding_blob, limit, offset, paths)
     }
 
+
     fn search_full_scan(
         &self,
         conn: &Connection,
@@ -180,7 +177,7 @@ impl Store {
         paths: Option<&[String]>,
     ) -> anyhow::Result<Vec<SearchResult>> {
         let mut sql = String::from(
-            "SELECT file_path, language, content, start_line, end_line,
+            "SELECT file_path, language, start_line, end_line,
                     vec_distance_L2(embedding, ?) as distance
              FROM code_chunks_vec",
         );
@@ -228,10 +225,10 @@ impl Store {
             Ok(SearchResult {
                 file_path: row.get(0)?,
                 language: row.get(1).ok(),
-                content: row.get(2)?,
-                start_line: row.get::<_, i64>(3)? as usize,
-                end_line: row.get::<_, i64>(4)? as usize,
-                score: Self::l2_to_cosine(row.get::<_, f32>(5)?),
+                content: String::new(),
+                start_line: row.get::<_, i64>(2)? as usize,
+                end_line: row.get::<_, i64>(3)? as usize,
+                score: Self::l2_to_cosine(row.get::<_, f32>(4)?),
             })
         })?;
 
@@ -248,7 +245,7 @@ impl Store {
         paths: Option<&[String]>,
     ) -> anyhow::Result<Vec<SearchResult>> {
         let mut sql = String::from(
-            "SELECT file_path, language, content, start_line, end_line, distance
+            "SELECT file_path, language, start_line, end_line, distance
              FROM code_chunks_vec
              WHERE embedding MATCH ? AND k = ? AND language = ?"
         );
@@ -283,10 +280,10 @@ impl Store {
             Ok(SearchResult {
                 file_path: row.get(0)?,
                 language: row.get(1).ok(),
-                content: row.get(2)?,
-                start_line: row.get::<_, i64>(3)? as usize,
-                end_line: row.get::<_, i64>(4)? as usize,
-                score: Self::l2_to_cosine(row.get::<_, f32>(5)?),
+                content: String::new(),
+                start_line: row.get::<_, i64>(2)? as usize,
+                end_line: row.get::<_, i64>(3)? as usize,
+                score: Self::l2_to_cosine(row.get::<_, f32>(4)?),
             })
         })?;
 
@@ -349,7 +346,7 @@ impl Store {
         paths: Option<&[String]>,
     ) -> anyhow::Result<Vec<SearchResult>> {
         let mut sql = String::from(
-            "SELECT file_path, language, content, start_line, end_line, distance
+            "SELECT file_path, language, start_line, end_line, distance
              FROM code_chunks_vec
              WHERE embedding MATCH ? AND k = ?"
         );
@@ -383,10 +380,10 @@ impl Store {
             Ok(SearchResult {
                 file_path: row.get(0)?,
                 language: row.get(1).ok(),
-                content: row.get(2)?,
-                start_line: row.get::<_, i64>(3)? as usize,
-                end_line: row.get::<_, i64>(4)? as usize,
-                score: Self::l2_to_cosine(row.get::<_, f32>(5)?),
+                content: String::new(),
+                start_line: row.get::<_, i64>(2)? as usize,
+                end_line: row.get::<_, i64>(3)? as usize,
+                score: Self::l2_to_cosine(row.get::<_, f32>(4)?),
             })
         })?;
 
@@ -482,7 +479,7 @@ impl Store {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct SearchResult {
     pub file_path: String,
     pub language: Option<String>,

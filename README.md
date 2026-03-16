@@ -16,10 +16,6 @@ Install the latest release binary with one command:
 curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | bash
 ```
 
-Prebuilt binaries currently support Linux and macOS only.
-Windows native binaries are not supported yet.
-On Windows, use WSL and run the Linux install command inside WSL.
-
 This installs the prebuilt release binary to:
 
 ```bash
@@ -37,40 +33,40 @@ cocoindex-code-rs
 Claude Code:
 
 ```bash
-claude mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+claude mcp add cocoindex-code-rs -- cocoindex-code-rs
 ```
 
 Codex CLI:
 
 ```bash
-codex mcp add cocoindex-code-rs -- cocoindex-code-rs mcp
+codex mcp add cocoindex-code-rs -- cocoindex-code-rs
 ```
 
 After registration:
 
-- Claude Code or Codex CLI starts `cocoindex-code-rs mcp` when needed
-- the MCP process ensures the local daemon is running
-- first search auto-builds the project index if missing
-- later searches auto-refresh changed files incrementally
-- after the first successful index, the daemon watches file changes in the background
+- Claude Code or Codex CLI starts a single local MCP process when needed
+- the MCP process keeps a project-local index under `.cocoindex_code/`
+- first use auto-builds the project index if missing
+- later updates are incremental and only changed files are re-indexed
+- while the MCP session stays alive, the server watches accessed projects in the background
 
 ## Agent Prompt
 
 Add this to your project's `AGENTS.md`:
 
 ```md
-Use the `cocoindex-code-rs` MCP server automatically for semantic code search when:
-- the user asks by behavior, intent, or meaning rather than exact text
-- the codebase area is unfamiliar
-- similar implementations or related patterns are needed
-- grep, filename search, or symbol lookup is noisy or inconclusive
+Use the `cocoindex-code-rs` MCP server for semantic code search when:
+- searching by behavior or meaning instead of exact text
+- exploring unfamiliar parts of the codebase
+- looking for similar implementations
+- grep or filename search is noisy or inconclusive
 
 Prefer normal text search first when exact names, symbols, routes, config keys, or error strings are known.
 
-When using `cocoindex-code-rs`:
-- use it to identify candidate files and code chunks
-- then verify results by reading files or using local text search
-- avoid repeated semantic searches if one search already narrowed the area
+When using semantic search:
+- use it to find candidate files and code chunks
+- then verify results with local code reading or text search
+- avoid repeated semantic searches when one search already identified the area
 ```
 
 ## What It Does
@@ -80,11 +76,11 @@ When using `cocoindex-code-rs`:
   - `index_project`
   - `project_status`
 - Builds a local SQLite + `sqlite-vec` index per project
+- Stores project data under each project's `.cocoindex_code/`
 - Uses syntax-aware chunking with tree-sitter when available
 - Auto-indexes on first use
 - Performs incremental indexing on later searches
-- Starts a local daemon automatically
-- Watches project files in the background after the first successful index
+- Watches accessed project files in the background during the active MCP session
 
 ## Settings
 
@@ -110,7 +106,6 @@ OPENAI_API_KEY
 OPENAI_API_BASE
 EMBEDDING_MODEL
 EMBEDDING_DIM
-COCOINDEX_CODE_DIR
 ```
 
 This project does not run local embedding inference by itself.
@@ -136,7 +131,27 @@ cocoindex-code-rs mcp --project-root /path/to/project
 
 - path filtering currently falls back to a full SQL distance scan
 - language filtering can use vec partition-aware search
-- the daemon is local-only and is started automatically by the CLI/MCP flow
+- the MCP server is single-process and does not require a separate local daemon
+- each project keeps its own local index database
+
+## Benchmarks
+
+Real-world measurements on this repository with a hosted embedding API:
+
+- Whole monorepo, persistent MCP process, 100 natural-language queries:
+  - `Top1`: 39%
+  - `Top5`: 62%
+  - median latency: ~322 ms
+- Rust subproject only (`cocoindex-rs`), persistent MCP process, 100 queries:
+  - `Top1`: 59%
+  - `Top5`: 89%
+  - median latency: ~349 ms
+
+Practical guidance:
+
+- best results come from searching within the current project or language scope
+- whole-monorepo semantic search is usable, but precision is lower across mixed languages and docs
+- persistent MCP sessions are much faster than repeated CLI cold starts
 
 ## More Docs
 
