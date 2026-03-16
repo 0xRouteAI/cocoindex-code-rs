@@ -22,30 +22,35 @@ jobs:
             os: linux
             arch: x86_64
             binary: cocoindex-code-rs
+            artifact_name: cocoindex-code-rs
             archive_ext: tar.gz
           - runner: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             os: linux
             arch: aarch64
             binary: cocoindex-code-rs
+            artifact_name: cocoindex-code-rs
             archive_ext: tar.gz
           - runner: macos-latest
             target: x86_64-apple-darwin
             os: macos
             arch: x86_64
             binary: cocoindex-code-rs
+            artifact_name: cocoindex-code-rs
             archive_ext: tar.gz
           - runner: macos-latest
             target: aarch64-apple-darwin
             os: macos
             arch: aarch64
             binary: cocoindex-code-rs
+            artifact_name: cocoindex-code-rs
             archive_ext: tar.gz
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             os: windows
             arch: x86_64
             binary: cocoindex-code-rs.exe
+            artifact_name: cocoindex-code-rs
             archive_ext: zip
 
     runs-on: ${{ matrix.runner }}
@@ -74,7 +79,7 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} dist/${{ matrix.binary }}
           chmod +x dist/${{ matrix.binary }}
-          tar -czf ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }} -C dist ${{ matrix.binary }}
+          tar -czf ${{ matrix.artifact_name }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }} -C dist ${{ matrix.binary }}
 
       - name: Package archive (Windows)
         if: runner.os == 'Windows'
@@ -82,16 +87,16 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
-          Compress-Archive -Path "dist/${{ matrix.binary }}" -DestinationPath "${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }}" -Force
+          Compress-Archive -Path "dist/${{ matrix.binary }}" -DestinationPath "${{ matrix.artifact_name }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }}" -Force
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }}
+          name: ${{ matrix.artifact_name }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ matrix.artifact_name }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }}
 
       - name: Upload release asset
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.binary }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }}
+          files: ${{ matrix.artifact_name }}-${{ matrix.os }}-${{ matrix.arch }}.${{ matrix.archive_ext }}
