@@ -3,6 +3,7 @@ use crate::daemon_protocol::{Request, Response};
 use crate::version::VERSION;
 use anyhow::Context;
 use std::io::{BufRead, BufReader, Write};
+use std::io::ErrorKind;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -51,7 +52,28 @@ impl DaemonClient {
     }
 }
 
+fn remove_daemon_runtime_files() {
+    if let Ok(pid_path) = daemon_pid_path() {
+        if pid_path.exists() {
+            let _ = std::fs::remove_file(pid_path);
+        }
+    }
+    if let Ok(socket_path) = daemon_socket_path() {
+        if socket_path.exists() {
+            let _ = std::fs::remove_file(socket_path);
+        }
+    }
+}
+
+fn is_connection_refused(err: &anyhow::Error) -> bool {
+    err.chain()
+        .filter_map(|cause| cause.downcast_ref::<std::io::Error>())
+        .any(|io_err| io_err.kind() == ErrorKind::ConnectionRefused)
+}
+
 pub fn start_daemon() -> anyhow::Result<()> {
+    remove_daemon_runtime_files();
+
     let current_exe = std::env::var("CARGO_BIN_EXE_cocoindex-code-rs")
         .map(std::path::PathBuf::from)
         .or_else(|_| std::env::current_exe())?;
@@ -98,24 +120,21 @@ pub fn stop_daemon() -> anyhow::Result<()> {
         std::thread::sleep(Duration::from_millis(100));
     }
 
-    if pid_path.exists() {
-        let _ = std::fs::remove_file(&pid_path);
-    }
-    if let Ok(socket_path) = daemon_socket_path() {
-        if socket_path.exists() {
-            let _ = std::fs::remove_file(&socket_path);
-        }
-    }
+    remove_daemon_runtime_files();
     Ok(())
 }
 
 pub fn ensure_daemon() -> anyhow::Result<DaemonClient> {
     if let Ok(client) = DaemonClient::connect() {
-        match client.handshake()? {
-            Response::Handshake { ok: true, .. } => return Ok(client),
-            _ => {
+        match client.handshake() {
+            Ok(Response::Handshake { ok: true, .. }) => return Ok(client),
+            Ok(_) => {
                 let _ = stop_daemon();
             }
+            Err(err) if is_connection_refused(&err) => {
+                remove_daemon_runtime_files();
+            }
+            Err(err) => return Err(err),
         }
     }
 
