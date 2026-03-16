@@ -16,6 +16,10 @@ Install the latest release binary with one command:
 curl -fsSL https://raw.githubusercontent.com/0xRouteAI/cocoindex-code-rs/main/install.sh | bash
 ```
 
+Prebuilt binaries currently support Linux and macOS only.
+Windows native binaries are not supported yet.
+On Windows, use WSL and run the Linux install command inside WSL.
+
 This installs the prebuilt release binary to:
 
 ```bash
