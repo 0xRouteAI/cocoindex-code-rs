@@ -7,6 +7,7 @@ BIN_NAME="cocoindex-code-rs"
 DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 VERSION="${VERSION:-latest}"
+TEMP_DIR=""
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -49,6 +50,12 @@ resolve_version() {
     | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
+cleanup() {
+  if [[ -n "${TEMP_DIR:-}" && -d "${TEMP_DIR}" ]]; then
+    rm -rf -- "${TEMP_DIR}"
+  fi
+}
+
 main() {
   need_cmd curl
   need_cmd tar
@@ -60,7 +67,6 @@ main() {
   local version_path
   local archive_name
   local download_url
-  local temp_dir
 
   os="$(detect_os)"
   arch="$(detect_arch)"
@@ -75,18 +81,18 @@ main() {
   version_path="${version_path#refs/tags/}"
   archive_name="${BIN_NAME}-${os}-${arch}.tar.gz"
   download_url="https://github.com/${REPO_SLUG}/releases/download/${version_path}/${archive_name}"
-  temp_dir="$(mktemp -d)"
+  TEMP_DIR="$(mktemp -d)"
 
-  trap 'rm -rf "$temp_dir"' EXIT
+  trap cleanup EXIT
 
   echo "Installing ${BIN_NAME} ${resolved_version} for ${os}/${arch}"
   echo "Download URL: ${download_url}"
 
-  curl -fL "$download_url" -o "${temp_dir}/${archive_name}"
-  tar -xzf "${temp_dir}/${archive_name}" -C "$temp_dir"
+  curl -fL "$download_url" -o "${TEMP_DIR}/${archive_name}"
+  tar -xzf "${TEMP_DIR}/${archive_name}" -C "$TEMP_DIR"
 
   mkdir -p "$INSTALL_DIR"
-  install "${temp_dir}/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
+  install "${TEMP_DIR}/${BIN_NAME}" "${INSTALL_DIR}/${BIN_NAME}"
 
   echo
   echo "Installed to: ${INSTALL_DIR}/${BIN_NAME}"
